@@ -1,0 +1,312 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+"""
+This script prepares an OpenSwitch image to run as a Topology node. It is
+copied as openswitch_setup.py in the docker container shared folder and then
+executed with python /path/to/the/script/openswitch_setup.py -d.
+"""
+
+from logging import info, DEBUG, basicConfig
+from sys import argv
+from time import sleep
+from os.path import exists, split
+from json import dumps, loads
+from shlex import split as shsplit
+from subprocess import check_call, check_output, call, CalledProcessError
+from socket import AF_UNIX, SOCK_STREAM, socket, gethostname
+from re import search, MULTILINE
+from yaml import load
+
+config_timeout = 300
+ops_switchd_active_timeout = 60
+swns_netns = '/var/run/netns/swns'
+emulns_netns = '/var/run/netns/emulns'
+hwdesc_dir = '/etc/openswitch/hwdesc'
+db_sock = '/var/run/openvswitch/db.sock'
+switchd_pid = '/var/run/openvswitch/ops-switchd.pid'
+sock = None
+
+
+def create_interfaces():
+    # Read ports from hardware description
+    with open('{}/ports.yaml'.format(hwdesc_dir), 'r') as fd:
+        ports_hwdesc = load(fd)
+    hwports = [str(p['name']) for p in ports_hwdesc['ports']]
+
+    netns = check_output("ls /var/run/netns", shell=True)
+
+    # Get list of already created ports
+    not_in_netns = check_output(shsplit(
+        'ls /sys/class/net/'
+    )).split()
+
+    if "emulns" not in netns:
+        in_netns = check_output(shsplit(
+            'ip netns exec swns ls /sys/class/net/'
+        )).split()
+    else:
+        in_netns = check_output(shsplit(
+            'ip netns exec emulns ls /sys/class/net/'
+        )).split()
+
+    info('Not in swns/emulns: {not_in_netns} '.format(**locals()))
+    info('In swns/emulns {in_netns} '.format(**locals()))
+
+    create_cmd_tpl = 'ip tuntap add dev {hwport} mode tap'
+    netns_cmd_tpl_swns = 'ip link set {hwport} netns swns'
+    netns_fp_cmd_tpl_swns = 'ip link set {hwport} netns swns'
+    netns_cmd_tpl_emulns = (
+        'ip netns exec swns ip link set {hwport} netns emulns'
+    )
+    netns_fp_cmd_tpl_emulns = 'ip link set {hwport} netns emulns'
+    rename_int = 'ip link set {portlbl} name {hwport}'
+    ns_exec = 'ip netns exec emulns '
+
+    # Save port mapping information
+    mapping_ports = {}
+
+    # Map the port with the labels
+    for portlbl in not_in_netns:
+        info('Port {portlbl} found'.format(**locals()))
+
+        if portlbl in ['lo', 'oobm', 'eth0', 'bonding_masters']:
+            continue
+
+        hwport = hwports.pop(0)
+        mapping_ports[portlbl] = hwport
+
+        info(
+            'Port {portlbl} moved to swns/emulns netns as {hwport}.'
+            .format(**locals())
+        )
+
+        try:
+            check_call(shsplit(rename_int.format(**locals())))
+
+            if 'emulns' not in netns:
+                check_call(
+                    shsplit(netns_fp_cmd_tpl_swns.format(hwport=hwport))
+                )
+            else:
+                check_call(
+                    shsplit(netns_fp_cmd_tpl_emulns.format(hwport=hwport))
+                )
+                check_call(
+                    '{ns_exec} ip link set dev {hwport} up'.format(**locals()),
+                    shell=True
+                )
+
+                for i in range(0, config_timeout):
+                    link_state = check_output(
+                        '{ns_exec} ip link show {hwport}'.format(**locals()),
+                        shell=True
+                    )
+                    if "UP" in link_state:
+                        break
+                    else:
+                        sleep(0.1)
+                else:
+                    raise Exception('emulns interface did not came up.')
+
+                out = check_output(
+                    '{ns_exec} echo port_add {hwport} '
+                    ' {port} | {ns_exec} '
+                    '/usr/bin/bm_tools/runtime_CLI.py --json '
+                    '/usr/share/ovs_p4_plugin/switch_bmv2.json '
+                    '--thrift-port 10001'.format(
+                        ns_exec=ns_exec, hwport=hwport,
+                        port=str(int(hwport) - 1)
+                    ),
+                    shell=True
+                )
+
+                info('BM port creation: {}'.format(out))
+
+                regex = (
+                    r'\s*Control utility for runtime P4 table'
+                    r' manipulation\s*\nRuntimeCmd:\s*\nRuntimeCmd:\s*$'
+                )
+
+                if search(regex, out, MULTILINE) is None:
+                    raise Exception(
+                        'Control utility for runtime P4 table failed.'
+                    )
+
+        except CalledProcessError as error:
+            raise Exception(
+                'Failed to map ports with port labels, {} failed with this '
+                'error: {}'.format(error.cmd, error.output)
+            )
+
+        except Exception as error:
+            raise Exception(
+                'Failed to map ports with port labels: {}'.format(
+                    error.message
+                )
+            )
+
+    # Writting mapping to file
+    shared_dir_tmp = split(__file__)[0]
+
+    with open('{}/port_mapping.json'.format(shared_dir_tmp), 'w') as json_file:
+        json_file.write(dumps(mapping_ports))
+
+    for hwport in hwports:
+        if hwport in in_netns:
+            info('Port {} already present.'.format(hwport))
+            continue
+
+        info('Port {} created.'.format(hwport))
+        try:
+            if 'emulns' not in netns:
+                check_call(shsplit(create_cmd_tpl.format(hwport=hwport)))
+        except:
+            raise Exception('Failed to create tuntap')
+
+        try:
+            if 'emulns' not in netns:
+                check_call(shsplit(netns_cmd_tpl_swns.format(hwport=hwport)))
+        except:
+            raise Exception('Failed to move port to swns/emulns netns.')
+
+    check_call(shsplit('touch /tmp/ops-virt-ports-ready'))
+    info('Port readiness notified to the image.')
+
+
+def cur_is_set(cur_key):
+    queries = {
+        'cur_hw': {
+            'method': 'transact',
+            'params': [
+                'OpenSwitch',
+                {
+                    'op': 'select',
+                    'table': 'System',
+                    'where': [],
+                    'columns': ['cur_hw']
+                }
+            ],
+            'id': id(db_sock)
+        },
+        'cur_cfg': {
+            'method': 'transact',
+            'params': [
+                'OpenSwitch',
+                {
+                    'op': 'select',
+                    'table': 'System',
+                    'where': [],
+                    'columns': ['cur_cfg']
+                }
+            ],
+            'id': id(db_sock)
+        }
+    }
+
+    global sock
+    if sock is None:
+        sock = socket(AF_UNIX, SOCK_STREAM)
+        sock.connect(db_sock)
+    sock.send(dumps(queries[cur_key]))
+    response = loads(sock.recv(4096))
+
+    try:
+        return response['result'][0]['rows'][0][cur_key] == 1
+    except IndexError:
+        return 0
+
+
+def ops_switchd_is_active():
+    is_active = call(["systemctl", "is-active", "switchd.service"])
+    return is_active == 0
+
+
+def main():
+
+    if '-d' in argv:
+        basicConfig(level=DEBUG)
+
+    def wait_check(function, wait_name, wait_error, *args):
+        info('Waiting for {}'.format(wait_name))
+
+        for i in range(0, config_timeout):
+            if not function(*args):
+                sleep(0.1)
+            else:
+                break
+        else:
+            raise Exception(
+                'The image did not boot correctly, '
+                '{} after waiting {} seconds.'.format(
+                    wait_error, int(0.1 * config_timeout)
+                )
+            )
+
+    wait_check(
+        exists, swns_netns, '{} was not present'.format(swns_netns), swns_netns
+    )
+    wait_check(
+        exists, hwdesc_dir, '{} was not present'.format(hwdesc_dir), hwdesc_dir
+    )
+
+    info('Creating interfaces')
+    create_interfaces()
+
+    wait_check(
+        exists, db_sock, '{} was not present'.format(db_sock), db_sock
+    )
+    wait_check(
+        cur_is_set, 'cur_hw to be set to 1', 'cur_hw is not set to 1',
+        'cur_hw'
+    )
+    wait_check(
+        cur_is_set, 'cur_cfg to be set to 1', 'cur_cfg is not set to 1',
+        'cur_cfg'
+    )
+    wait_check(
+        exists, switchd_pid, '{} was not present'.format(switchd_pid),
+        switchd_pid
+    )
+    wait_check(
+        ops_switchd_is_active, 'ops-switchd to be active',
+        'ops-switchd was not active'
+    )
+    wait_check(
+        lambda: gethostname() == 'switch', 'final hostname',
+        'hostname was not set'
+    )
+
+    info('Checking restd service status...')
+    output = ''
+    try:
+        output = check_output(
+            'systemctl status restd', shell=True
+        )
+    except CalledProcessError as e:
+        pass
+    if 'Active: active' not in output:
+        try:
+            info('Starting restd daemon.')
+            check_output('systemctl start restd', shell=True)
+
+            info('Checking restd service started.')
+            for i in range(0, config_timeout):
+                output = ''
+                output = check_output(
+                    'systemctl status restd', shell=True
+                )
+                if 'Active: active' not in output:
+                    sleep(0.1)
+                else:
+                    break
+            else:
+                raise Exception("Failed to start restd service")
+
+        except CalledProcessError as e:
+            raise Exception(
+                'Failed to start restd: {}'.format(e.output)
+            )
+
+if __name__ == '__main__':
+    main()

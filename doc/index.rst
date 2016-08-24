@@ -1,28 +1,21 @@
 .. toctree::
    :hidden:
 
-   developer
+   user
    topology_docker_openswitch/topology_docker_openswitch
 
 ===================================
-openswitch node for topology_docker
+OpenSwitch node for Topology Docker
 ===================================
 
-A Topology OpenSwitch Node for topology_docker.
+An OpenSwitch Node for Topology Docker
 
 
 Documentation
 =============
 
-- :doc:`Developer Guide. <developer>`
+- :doc:`User Guide. <user>`
 - :doc:`Internal Documentation Reference. <topology_docker_openswitch/topology_docker_openswitch>`
-
-
-Development
-===========
-
-- `Project repository. <https://github.com/HPENetworking/topology_docker_openswitch>`_
-
 
 License
 =======

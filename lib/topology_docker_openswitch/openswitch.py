@@ -29,340 +29,18 @@ from subprocess import check_output, CalledProcessError
 from platform import system, linux_distribution
 from logging import StreamHandler, getLogger, INFO, Formatter
 from sys import stdout
+from os.path import join, dirname, normpath, abspath
 
 from topology_docker.node import DockerNode
-from topology_docker.shell import DockerShell, DockerBashShell
+from topology_docker.shell import DockerBashShell
+
+from .shell import OpenSwitchVtyshShell
 
 # When a failure happens during boot time, logs and other information is
 # collected to help with the debugging. The path of this collection is to be
 # stored here at module level to be able to import it in the pytest teardown
 # hook later. Non-failing containers will append their log paths here also.
 LOG_PATHS = []
-
-SETUP_SCRIPT = """\
-import logging
-from sys import argv
-from time import sleep
-from os.path import exists, split
-from json import dumps, loads
-from shlex import split as shsplit
-from subprocess import check_call, check_output, call, CalledProcessError
-from socket import AF_UNIX, SOCK_STREAM, socket, gethostname
-
-import re
-import yaml
-
-config_timeout = 1200
-ops_switchd_active_timeout = 60
-swns_netns = '/var/run/netns/swns'
-emulns_netns = '/var/run/netns/emulns'
-hwdesc_dir = '/etc/openswitch/hwdesc'
-db_sock = '/var/run/openvswitch/db.sock'
-switchd_pid = '/var/run/openvswitch/ops-switchd.pid'
-query_cur_hw = {
-    'method': 'transact',
-    'params': [
-        'OpenSwitch',
-        {
-            'op': 'select',
-            'table': 'System',
-            'where': [],
-            'columns': ['cur_hw']
-        }
-    ],
-    'id': id(db_sock)
-}
-query_cur_cfg = {
-    'method': 'transact',
-    'params': [
-        'OpenSwitch',
-        {
-            'op': 'select',
-            'table': 'System',
-            'where': [],
-            'columns': ['cur_cfg']
-        }
-    ],
-    'id': id(db_sock)
-}
-sock = None
-
-
-def create_interfaces():
-    # Read ports from hardware description
-    with open('{}/ports.yaml'.format(hwdesc_dir), 'r') as fd:
-        ports_hwdesc = yaml.load(fd)
-    hwports = [str(p['name']) for p in ports_hwdesc['ports']]
-
-    netns = check_output("ls /var/run/netns", shell=True)
-    # Get list of already created ports
-    not_in_netns = check_output(shsplit(
-        'ls /sys/class/net/'
-    )).split()
-    if "emulns" not in netns:
-        in_netns = check_output(shsplit(
-            'ip netns exec swns ls /sys/class/net/'
-        )).split()
-    else:
-        in_netns = check_output(shsplit(
-            'ip netns exec emulns ls /sys/class/net/'
-        )).split()
-    logging.info(
-            '  - Not in swns/emulns {not_in_netns} '.format(
-                **locals()
-            )
-        )
-    logging.info(
-            '  - In swns/emulns {in_netns} '.format(
-                **locals()
-            )
-        )
-
-    create_cmd_tpl = 'ip tuntap add dev {hwport} mode tap'
-    netns_cmd_tpl_swns = 'ip link set {hwport} netns swns'
-    netns_fp_cmd_tpl_swns = ('ip link set {hwport} netns swns')
-    netns_cmd_tpl_emulns = ('ip netns exec swns ip link set {hwport} '
-                            'netns emulns')
-
-    netns_fp_cmd_tpl_emulns = ('ip link set {hwport} netns emulns')
-    rename_int = ('ip link set {portlbl} name {hwport}')
-    ns_exec = 'ip netns exec emulns '
-
-    # Save port mapping information
-    mapping_ports = {}
-
-    # Map the port with the labels
-    for portlbl in not_in_netns:
-        logging.info(
-            '  - Port {portlbl} found'.format(
-                **locals()
-            )
-        )
-        if portlbl in ['lo', 'oobm', 'eth0', 'bonding_masters']:
-            continue
-        hwport = hwports.pop(0)
-        mapping_ports[portlbl] = hwport
-        logging.info(
-            '  - Port {portlbl} moved to swns/emulns netns as {hwport}.'
-            .format(**locals())
-        )
-        try:
-            check_call(shsplit(rename_int.format(**locals())))
-            if 'emulns' not in netns:
-                check_call(shsplit(netns_fp_cmd_tpl_swns
-                           .format(hwport=hwport)))
-            else:
-                check_call(shsplit(netns_fp_cmd_tpl_emulns
-                           .format(hwport=hwport)))
-                check_call('{ns_exec} ip link set dev {hwport} up'
-                           .format(**locals()), shell=True)
-                for i in range(0, config_timeout):
-                    link_state = check_output(
-                        '{ns_exec} ip link show {hwport}'
-                        .format(**locals()), shell=True)
-                    if "UP" in link_state:
-                        break;
-                    else:
-                        sleep(0.1)
-                else:
-                    raise Exception('Emulns interface did not came up...')
-
-                out = check_output(
-                    '{ns_exec} echo port_add {hwport} '
-                    ' {port} | {ns_exec} '
-                    '/usr/bin/bm_tools/runtime_CLI.py --json '
-                    '/usr/share/ovs_p4_plugin/switch_bmv2.json '
-                    '--thrift-port 10001'.format(ns_exec=ns_exec,
-                                                 hwport=hwport,
-                                                 port=str(int(hwport) - 1)),
-                    shell=True
-                )
-                logging.info('BM port creation...')
-                logging.info(out)
-                re_str = r''''\s*Control utility for runtime P4 table \
-manipulation\s*\nRuntimeCmd:\s*\nRuntimeCmd:\s*$'''  #noqa
-
-                if re.findall(re_str, out, re.MULTILINE) is None:
-                    raise Exception('Control utility for runtime P4 table '
-                                    'failed...')
-        except Exception as error:
-            raise Exception(
-                'Failed to map ports with port labels: {}'.format(
-                    error.message
-                )
-            )
-
-    # Writting mapping to file
-    shared_dir_tmp = split(__file__)[0]
-    with open('{}/port_mapping.json'.format(shared_dir_tmp), 'w') as json_file:
-        json_file.write(dumps(mapping_ports))
-
-    for hwport in hwports:
-        if hwport in in_netns:
-            logging.info('  - Port {} already present.'.format(hwport))
-            continue
-
-        logging.info('  - Port {} created.'.format(hwport))
-        try:
-            if "emulns" not in netns:
-                check_call(shsplit(create_cmd_tpl.format(hwport=hwport)))
-        except:
-            raise Exception('Failed to create tuntap')
-
-        try:
-            if 'emulns' not in netns:
-                check_call(shsplit(netns_cmd_tpl_swns.format(hwport=hwport)))
-        except:
-            raise Exception('Failed to move port to swns/emulns netns')
-    check_call(shsplit('touch /tmp/ops-virt-ports-ready'))
-    logging.info('  - Ports readiness notified to the image')
-
-def cur_hw_is_set():
-    global sock
-    if sock is None:
-        sock = socket(AF_UNIX, SOCK_STREAM)
-        sock.connect(db_sock)
-    sock.send(dumps(query_cur_hw))
-    response = loads(sock.recv(4096))
-    try:
-        return response['result'][0]['rows'][0]['cur_hw'] == 1
-    except IndexError:
-        return 0
-
-def cur_cfg_is_set():
-    global sock
-    if sock is None:
-        sock = socket(AF_UNIX, SOCK_STREAM)
-        sock.connect(db_sock)
-    sock.send(dumps(query_cur_cfg))
-    response = loads(sock.recv(4096))
-    try:
-        return response['result'][0]['rows'][0]['cur_cfg'] == 1
-    except IndexError:
-        return 0
-
-def ops_switchd_is_active():
-    is_active = call(["systemctl", "is-active", "switchd.service"])
-    return is_active == 0
-
-def main():
-
-    if '-d' in argv:
-        logging.basicConfig(level=logging.DEBUG)
-
-    logging.info('Waiting for swns netns...')
-    for i in range(0, config_timeout):
-        if not exists(swns_netns):
-            sleep(0.1)
-        else:
-            break
-    else:
-        raise Exception('Timed out while waiting for swns/emulns.')
-
-    logging.info('Waiting for hwdesc directory...')
-    for i in range(0, config_timeout):
-        if not exists(hwdesc_dir):
-            sleep(0.1)
-        else:
-            break
-    else:
-        raise Exception('Timed out while waiting for hwdesc directory.')
-
-    logging.info('Creating interfaces...')
-    create_interfaces()
-
-    logging.info('Waiting for DB socket...')
-    for i in range(0, config_timeout):
-        if not exists(db_sock):
-            sleep(0.1)
-        else:
-            break
-    else:
-        raise Exception('Timed out while waiting for DB socket.')
-
-    logging.info('Waiting for cur_hw...')
-    for i in range(0, config_timeout):
-        if not cur_hw_is_set():
-            sleep(0.1)
-        else:
-            break
-    else:
-        raise Exception('Timed out while waiting for cur_hw.')
-
-    logging.info('Waiting for cur_cfg...')
-    for i in range(0, config_timeout):
-        if not cur_cfg_is_set():
-            sleep(0.1)
-        else:
-            break
-    else:
-        raise Exception('Timed out while waiting for cur_cfg.')
-
-    logging.info('Waiting for switchd pid...')
-    for i in range(0, config_timeout):
-        if not exists(switchd_pid):
-            sleep(0.1)
-        else:
-            break
-    else:
-        raise Exception('Timed out while waiting for switchd pid.')
-
-    logging.info('Waiting for ops-switchd to become active...')
-    for i in range(0, ops_switchd_active_timeout):
-        if not ops_switchd_is_active():
-            sleep(1)
-        else:
-            break
-    else:
-        raise Exception('Timed out while waiting for ops-switchd '
-                        'to become active.')
-
-    logging.info('Wait for final hostname...')
-    for i in range(0, config_timeout):
-        if gethostname() != 'switch':
-            sleep(0.1)
-        else:
-            break
-    else:
-        raise Exception('Timed out while waiting for final hostname.')
-
-    logging.info('Checking restd service status...')
-    output = ''
-    try:
-        output = check_output(
-            'systemctl status restd', shell=True
-        )
-    except CalledProcessError as e:
-        pass
-    if 'Active: active' not in output:
-        try:
-            logging.info('Starting restd daemon...')
-            check_output('systemctl start restd', shell=True)
-            logging.info('Checking restd service started...')
-            for i in range(0, config_timeout):
-                output = ''
-                output = check_output(
-                    'systemctl status restd', shell=True
-                )
-                if 'Active: active' not in output:
-                    sleep(0.1)
-                else:
-                    break
-            else:
-                raise Exception("Failed to start restd service")
-        except CalledProcessError as e:
-            raise Exception(
-                'Failed to start restd: {}'.format(e.output)
-            )
-        except Exception as error:
-            raise Exception (
-                error
-            )
-
-if __name__ == '__main__':
-    main()
-"""
-
 LOG = getLogger(__name__)
 LOG_HDLR = StreamHandler(stream=stdout)
 LOG_HDLR.setFormatter(Formatter('%(asctime)s %(message)s'))
@@ -441,19 +119,16 @@ class OpenSwitchNode(DockerNode):
         self.shared_dir_mount = '/tmp'
 
         # Add vtysh (default) shell
-        # FIXME: Create a subclass to handle better the particularities of
-        # vtysh, like prompt setup etc.
-        self._register_shell(
-            'vtysh',
-            DockerShell(
-                self.container_id, 'vtysh',
-                '(^|\n)switch(\([\-a-zA-Z0-9]*\))?#'
-            )
-        )
+        # This shell is started as a bash shell but it changes itself to a
+        # vtysh one afterwards. This is necessary because this shell must be
+        # started from a bash one that has echo disabled to avoid wrong
+        # matching with some command output and by setting an unique prompt
+        # with the set prompt vtysh command
+        self._register_shell('vtysh', OpenSwitchVtyshShell(self.container_id))
 
         # Add bash shells
-        initial_prompt = '(^|\n).*[#$] '
 
+        initial_prompt = '(^|\n).*[#$] '
         self._register_shell(
             'bash',
             DockerBashShell(
@@ -497,9 +172,14 @@ class OpenSwitchNode(DockerNode):
         """
 
         # Write and execute setup script
+        with open(
+            join(dirname(normpath(abspath(__file__))), 'openswitch_setup')
+        ) as openswitch_setup_file:
+            openswitch_setup = openswitch_setup_file.read()
+
         setup_script = '{}/openswitch_setup.py'.format(self.shared_dir)
         with open(setup_script, 'w') as fd:
-            fd.write(SETUP_SCRIPT)
+            fd.write(openswitch_setup)
 
         try:
             self._docker_exec(
@@ -611,6 +291,19 @@ class OpenSwitchNode(DockerNode):
 
         command = '{prefix} ip link set dev {iface} {state}'.format(**locals())
         self._docker_exec(command)
+
+    def stop(self):
+        """
+        Exit all vtysh shells.
+
+        See :meth:`DockerNode.stop` for more information.
+        """
+
+        for shell in self._shells.values():
+            if isinstance(shell, OpenSwitchVtyshShell):
+                shell._exit()
+
+        super(OpenSwitchNode, self).stop()
 
 
 __all__ = ['OpenSwitchNode']
