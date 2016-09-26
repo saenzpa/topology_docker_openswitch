@@ -167,8 +167,12 @@ def create_interfaces():
                 )
                 logging.info('BM port creation...')
                 logging.info(out)
-        except:
-            raise Exception('Failed to map ports with port labels')
+        except Exception as error:
+            raise Exception(
+                'Failed to map ports with port labels: {}'.format(
+                    error.message
+                )
+            )
 
     # Writting mapping to file
     shared_dir_tmp = split(__file__)[0]
