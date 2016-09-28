@@ -49,6 +49,7 @@ from shlex import split as shsplit
 from subprocess import check_call, check_output, call, CalledProcessError
 from socket import AF_UNIX, SOCK_STREAM, socket, gethostname
 
+import re
 import yaml
 
 config_timeout = 300
@@ -155,6 +156,17 @@ def create_interfaces():
                            .format(hwport=hwport)))
                 check_call('{ns_exec} ip link set dev {hwport} up'
                            .format(**locals()), shell=True)
+                for i in range(0, config_timeout):
+                    link_state = check_output(
+                        '{ns_exec} ip link show {hwport}'
+                        .format(**locals()), shell=True)
+                    if "UP" in link_state:
+                        break;
+                    else:
+                        sleep(0.1)
+                else:
+                    raise Exception('Emulns interface did not came up...')
+
                 out = check_output(
                     '{ns_exec} echo port_add {hwport} '
                     ' {port} | {ns_exec} '
@@ -167,6 +179,12 @@ def create_interfaces():
                 )
                 logging.info('BM port creation...')
                 logging.info(out)
+                re_str = r''''\s*Control utility for runtime P4 table \
+manipulation\s*\nRuntimeCmd:\s*\nRuntimeCmd:\s*$'''  #noqa
+
+                if re.findall(re_str, out, re.MULTILINE) is None:
+                    raise Exception('Control utility for runtime P4 table '
+                                    'failed...')
         except Exception as error:
             raise Exception(
                 'Failed to map ports with port labels: {}'.format(

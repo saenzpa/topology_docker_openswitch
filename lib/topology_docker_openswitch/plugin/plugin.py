@@ -94,6 +94,24 @@ def pytest_runtest_teardown(item):
             )
 
         try:
+            core_files = join('/var/diagnostics/coredump', 'core.*')
+            files = node_obj.send_command('ls {}'.format(core_files),
+                                          shell='bash').splitlines()
+
+            if len(files) > 0:
+                for file in files:
+                    path = '/tmp'
+                    node_obj.send_command('cp {file} {path}'
+                                          .format(**locals()),
+                                          shell='bash')
+        except:
+            warning(
+                'Unable to get coredumps from node {}.'.format(
+                    node_obj.identifier
+                )
+            )
+
+        try:
             copytree(shared_dir, join(path_name, basename(shared_dir)))
             rmtree(shared_dir)
         except Error as err:
