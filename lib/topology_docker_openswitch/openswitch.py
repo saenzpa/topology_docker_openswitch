@@ -52,7 +52,7 @@ from socket import AF_UNIX, SOCK_STREAM, socket, gethostname
 import re
 import yaml
 
-config_timeout = 300
+config_timeout = 1200
 ops_switchd_active_timeout = 60
 swns_netns = '/var/run/netns/swns'
 emulns_netns = '/var/run/netns/emulns'
