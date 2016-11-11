@@ -425,7 +425,7 @@ class OpenSwitchNode(DockerNode):
         # Add binded directories
         container_binds = [
             '/dev/log:/dev/log',
-            '/sys/fs/cgroup:/sys/fs/cgroup:ro'
+            '/sys/fs/cgroup:/sys/fs/cgroup'
         ]
         if binds is not None:
             container_binds.append(binds)
