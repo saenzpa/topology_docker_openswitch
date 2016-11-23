@@ -53,7 +53,7 @@ source_suffix = '.rst'
 master_doc = 'index'
 
 # General information about the project.
-project = 'openswitch node for topology_docker'
+project = 'OpenSwitch node for Topology Docker'
 copyright = '2016, Hewlett Packard Enterprise Development LP'
 author = 'Hewlett Packard Enterprise Development LP'
 

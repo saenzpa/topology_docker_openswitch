@@ -93,17 +93,22 @@ def pytest_runtest_teardown(item):
                 )
             )
 
-        try:
-            core_files = join('/var/diagnostics/coredump', 'core.*')
-            files = node_obj.send_command('ls {}'.format(core_files),
-                                          shell='bash').splitlines()
+        bash_shell = node_obj.get_shell('bash')
 
-            if len(files) > 0:
-                for file in files:
-                    path = '/tmp'
-                    node_obj.send_command('cp {file} {path}'
-                                          .format(**locals()),
-                                          shell='bash')
+        try:
+            core_path = '/var/diagnostics/coredump'
+
+            bash_shell.send_command(
+                'ls -1 {}/core.* 2>/dev/null'.format(core_path), silent=True
+            )
+
+            core_files = bash_shell.get_response(silent=True).splitlines()
+
+            for core_file in core_files:
+                bash_shell.send_command(
+                    'cp {core_path}/{core_file} /tmp'.format(**locals()),
+                    silent=True
+                )
         except:
             warning(
                 'Unable to get coredumps from node {}.'.format(
