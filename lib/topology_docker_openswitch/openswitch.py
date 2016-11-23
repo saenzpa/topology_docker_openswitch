@@ -433,7 +433,8 @@ class OpenSwitchNode(DockerNode):
         super(OpenSwitchNode, self).__init__(
             identifier, image=image, command='/sbin/init',
             binds=';'.join(container_binds), hostname='switch',
-            network_mode='bridge', **kwargs
+            network_mode='bridge', environment={'container': 'docker'},
+            **kwargs
         )
 
         # FIXME: Remove this attribute to merge with version > 1.6.0
@@ -513,6 +514,7 @@ class OpenSwitchNode(DockerNode):
             platforms_log_location = {
                 'Ubuntu': 'cat /var/log/upstart/docker.log',
                 'CentOS Linux': 'grep docker /var/log/daemon.log',
+                'debian': 'journalctl -u docker.service',
                 # FIXME: find the right values for the next dictionary keys:
                 # 'boot2docker': 'cat /var/log/docker.log',
                 # 'debian': 'cat /var/log/daemon.log',
