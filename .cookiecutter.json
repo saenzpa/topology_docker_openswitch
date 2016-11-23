@@ -10,5 +10,5 @@
     "project_name": "openswitch node for topology_docker",
     "short_description": "A Topology OpenSwitch Node for topology_docker.",
     "year": "2016",
-    "version": "0.1.0"
+    "version": "1.0.0"
 }

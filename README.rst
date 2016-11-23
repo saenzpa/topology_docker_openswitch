@@ -5,6 +5,20 @@ openswitch node for topology_docker
 A Topology OpenSwitch Node for topology_docker.
 
 
+1.0.0
+-----
+
+**Fixes**
+
+- Removing shell echo.
+
+0.1.0
+-----
+
+**New**
+
+- Initial release.
+
 Documentation
 =============
 
