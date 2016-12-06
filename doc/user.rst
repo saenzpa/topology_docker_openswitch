@@ -65,6 +65,9 @@ prompt will remain in its standard value.
 Be aware that in order for the node to detect the ``Segmentation fault`` error
 message, the ``vytsh`` shell is started with ``stdbuf -oL vtysh``.
 
+Before the node is destroyed at the end of its life, this shell will be exited
+by sending the ``end`` and ``exit`` commands.
+
 The Booting Process
 ===================
 
