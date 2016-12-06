@@ -4,6 +4,12 @@ openswitch node for topology_docker
 
 A Topology OpenSwitch Node for topology_docker.
 
+1.0.1
+-----
+
+**Fixes**
+
+- Documenting vtysh exit.
 
 1.0.0
 -----
