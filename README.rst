@@ -4,6 +4,13 @@ openswitch node for topology_docker
 
 A Topology OpenSwitch Node for topology_docker.
 
+1.0.2
+-----
+
+**Fixes**
+
+- Fixing wrong regular expression search.
+
 1.0.1
 -----
 
