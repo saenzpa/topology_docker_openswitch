@@ -15,10 +15,10 @@ from json import dumps, loads
 from shlex import split as shsplit
 from subprocess import check_call, check_output, call, CalledProcessError
 from socket import AF_UNIX, SOCK_STREAM, socket, gethostname
-from re import search, MULTILINE
+from re import findall, MULTILINE
 from yaml import load
 
-config_timeout = 300
+config_timeout = 1200
 ops_switchd_active_timeout = 60
 swns_netns = '/var/run/netns/swns'
 emulns_netns = '/var/run/netns/emulns'
@@ -128,7 +128,7 @@ def create_interfaces():
                     r' manipulation\s*\nRuntimeCmd:\s*\nRuntimeCmd:\s*$'
                 )
 
-                if search(regex, out, MULTILINE) is None:
+                if findall(regex, out, MULTILINE) is None:
                     raise Exception(
                         'Control utility for runtime P4 table failed.'
                     )
