@@ -308,5 +308,6 @@ def main():
                 'Failed to start restd: {}'.format(e.output)
             )
 
+
 if __name__ == '__main__':
     main()

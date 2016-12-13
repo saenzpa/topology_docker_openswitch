@@ -31,7 +31,7 @@ from topology.platforms.shell import PExpectBashShell
 from topology_docker.shell import DockerShell
 
 
-_VTYSH_PROMPT_TPL = r'(\r\n)?{}(\([-\w\s]+\))?# '
+_VTYSH_PROMPT_TPL = r'(\r\n)?{}(\([-\w\s]+\))?[#>] '
 _VTYSH_FORCED = 'X@~~==::VTYSH_PROMPT::==~~@X'
 # This is a regular expression that matches with values that may be found in
 # unset vtysh prompts:

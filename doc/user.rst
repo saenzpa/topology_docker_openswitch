@@ -57,7 +57,7 @@ expression if you want to match with any context that has this forced prompt:
 
 ::
 
-    r'(\r\n)?X@~~==::VTYSH_PROMPT::==~~@X(\([-\w\s]+\))?# '
+    r'(\r\n)?X@~~==::VTYSH_PROMPT::==~~@X(\([-\w\s]+\))?[#>] '
 
 If ``set prompt`` is not available, the echo will not be disabled and the
 prompt will remain in its standard value.
