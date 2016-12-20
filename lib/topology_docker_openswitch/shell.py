@@ -22,10 +22,6 @@ OpenSwitch shell module
 from __future__ import unicode_literals, absolute_import
 from __future__ import print_function, division
 
-from logging import warning
-
-from pexpect import EOF
-
 from topology_docker.shell import DockerShell
 
 from topology_openswitch.vtysh import (
@@ -139,7 +135,7 @@ class OpenSwitchVtyshShell(DockerShell, VtyshShellMixin):
 
             # From now on the shell _prompt attribute is set to the defined
             # vtysh forced prompt.
-            self._prompt = [BASH_FORCED_PROMPT, VTYSH_FORCED_PROMPT]
+            self._prompt = '|'.join([BASH_FORCED_PROMPT, VTYSH_FORCED_PROMPT])
 
         else:
             # If the image does not support "set prompt", then enable the
@@ -149,7 +145,9 @@ class OpenSwitchVtyshShell(DockerShell, VtyshShellMixin):
 
             # From now on the shell _prompt attribute is set to the defined
             # vtysh standard prompt.
-            self._prompt = [BASH_FORCED_PROMPT, VTYSH_STANDARD_PROMPT]
+            self._prompt = '|'.join(
+                [BASH_FORCED_PROMPT, VTYSH_STANDARD_PROMPT]
+            )
 
         # This sendline is used here just because a _setup_shell must end in an
         # send/sendline call since it is followed by a call to expect in the
@@ -171,25 +169,6 @@ class OpenSwitchVtyshShell(DockerShell, VtyshShellMixin):
         self._handle_crash(connection)
 
         return match_index
-
-    def _exit(self):
-        """
-        Attempt a clean exit from the shell.
-
-        This is necessary to enable gathering of coverage information.
-        """
-        try:
-            self.send_command('end', silent=True)
-            self.send_command(
-                'exit', matches=[EOF, BASH_FORCED_PROMPT],
-                silent=True
-            )
-        except Exception as error:
-            warning(
-                'Exiting the shell failed with this error: {}'.format(
-                    str(error)
-                )
-            )
 
 
 __all__ = ['OpenSwitchVtyshShell']
