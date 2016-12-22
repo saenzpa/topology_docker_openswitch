@@ -340,6 +340,16 @@ class OpenSwitchNode(DockerNode):
         self.capabilities = Capabilities(self)
         self.capacities = Capacities(self)
 
+        # Add virtual type
+
+        vtysh = self.get_shell('vtysh')
+
+        vtysh.send_command('show version', silent=True)
+        if 'genericx86-64' in vtysh.get_response(silent=True):
+            self.docker = Namespace(**{'type': 'genericx84-64'})
+        else:
+            self.docker = Namespace(**{'type': 'p4'})
+
         # Read back port mapping
         port_mapping = '{}/port_mapping.json'.format(self.shared_dir)
         with open(port_mapping, 'r') as fd:
