@@ -346,9 +346,9 @@ class OpenSwitchNode(DockerNode):
 
         vtysh.send_command('show version', silent=True)
         if 'genericx86-64' in vtysh.get_response(silent=True):
-            self.docker = Namespace(**{'type': 'genericx84-64'})
+            self.product_name = 'genericx84-64'
         else:
-            self.docker = Namespace(**{'type': 'p4'})
+            self.product_name = 'genericx86-p4'
 
         # Read back port mapping
         port_mapping = '{}/port_mapping.json'.format(self.shared_dir)
