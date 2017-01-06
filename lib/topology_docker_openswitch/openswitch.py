@@ -24,13 +24,17 @@ Custom Topology Docker Node for OpenSwitch.
 from __future__ import unicode_literals, absolute_import
 from __future__ import print_function, division
 
+from abc import ABCMeta, abstractmethod
 from json import loads
 from subprocess import check_output, CalledProcessError
 from platform import system, linux_distribution
 from logging import StreamHandler, getLogger, INFO, Formatter
 from sys import stdout
 from os.path import join, dirname, normpath, abspath
-from argparse import Namespace
+
+from six import add_metaclass
+
+from topology_openswitch.openswitch import OpenSwitchBase
 
 from topology_docker.node import DockerNode
 from topology_docker.shell import DockerBashShell
@@ -48,74 +52,6 @@ LOG_HDLR.setFormatter(Formatter('%(asctime)s %(message)s'))
 LOG_HDLR.setLevel(INFO)
 LOG.addHandler(LOG_HDLR)
 LOG.setLevel(INFO)
-
-
-class MissingCapacityError(Exception):
-    def __init__(self, capacity):
-        self._capacity = capacity
-
-    def __str__(self):
-        return 'Missing capacity \'{}\''.format(self._capacity)
-
-
-class TransactNamespace(Namespace):
-    """
-    Provides a common call to ``ovsdb-client transact``
-    """
-
-    def _transact(self, node, columns, op='select', table='System', where=''):
-        bash = node.get_shell('bash')
-        bash.send_command(
-            'ovsdb-client transact \'["OpenSwitch", '
-            '{{"op":"{}","table":"{}","where":[{}],'
-            '"columns":["{}"]}}]\''.format(op, table, where, columns),
-            silent=True
-        )
-        return loads(bash.get_response(silent=True))
-
-
-class Capabilities(TransactNamespace):
-    """
-    Represent the switch capabilities.
-
-    This is a namespace that holds all defined capabilities. Each one of them
-    will be set to True, if an attribute outside the defined capabilities is
-    accessed, it will return False. This will allow the test engineer to try to
-    find a defined capability by querying against the requested attribute.
-    """
-
-    def __init__(self, node):
-        capabilities = self._transact(
-            node, 'capabilities'
-        )[0]['rows'][0]['capabilities'][1]
-
-        super(Capabilities, self).__init__(
-            **{capability: True for capability in capabilities}
-        )
-
-    def __getattr__(self, name):
-        return False
-
-
-class Capacities(TransactNamespace):
-    """
-    Represent the switch capacities
-
-    This class will raise a MissingCapacityError if an attempt to access a
-    non-existing capacity is made.
-    """
-
-    def __init__(self, node):
-        capacities = self._transact(
-            node, 'capacities'
-        )[0]['rows'][0]['capacities'][1]
-
-        super(Capacities, self).__init__(
-            **{capacity: value for capacity, value in capacities}
-        )
-
-    def __getattr__(self, name):
-        raise MissingCapacityError(name)
 
 
 def log_commands(
@@ -155,7 +91,8 @@ def log_commands(
                 )
 
 
-class OpenSwitchNode(DockerNode):
+@add_metaclass(ABCMeta)
+class DockerOpenSwitch(DockerNode, OpenSwitchBase):
     """
     Custom OpenSwitch node for the Topology Docker platform engine.
     This custom node loads an OpenSwitch image and has vtysh as default
@@ -163,6 +100,10 @@ class OpenSwitchNode(DockerNode):
     See :class:`topology_docker.node.DockerNode`.
     """
 
+    # FIXME: document shared_dir_mount
+    _openswitch_attributes = {'shared_dir_mount': ''}
+
+    @abstractmethod
     def __init__(
             self, identifier,
             image='topology/ops:latest', binds=None,
@@ -177,7 +118,7 @@ class OpenSwitchNode(DockerNode):
         if binds is not None:
             container_binds.append(binds)
 
-        super(OpenSwitchNode, self).__init__(
+        super(DockerOpenSwitch, self).__init__(
             identifier, image=image, command='/sbin/init',
             binds=';'.join(container_binds), hostname='switch',
             network_mode='bridge', environment={'container': 'docker'},
@@ -185,7 +126,7 @@ class OpenSwitchNode(DockerNode):
         )
 
         # FIXME: Remove this attribute to merge with version > 1.6.0
-        self.shared_dir_mount = '/tmp'
+        self._shared_dir_mount = '/tmp'
 
         # Add vtysh (default) shell
         # This shell is started as a bash shell but it changes itself to a
@@ -228,7 +169,7 @@ class OpenSwitchNode(DockerNode):
 
         See :meth:`DockerNode.notify_post_build` for more information.
         """
-        super(OpenSwitchNode, self).notify_post_build()
+        super(DockerOpenSwitch, self).notify_post_build()
         self._setup_system()
 
     def _setup_system(self):
@@ -335,11 +276,6 @@ class OpenSwitchNode(DockerNode):
 
             raise e
 
-        # Add capabilities
-
-        self.capabilities = Capabilities(self)
-        self.capacities = Capacities(self)
-
         # Add virtual type
 
         vtysh = self.get_shell('vtysh')
@@ -388,7 +324,13 @@ class OpenSwitchNode(DockerNode):
             if isinstance(shell, OpenSwitchVtyshShell):
                 shell._exit()
 
-        super(OpenSwitchNode, self).stop()
+        super(DockerOpenSwitch, self).stop()
 
 
-__all__ = ['OpenSwitchNode']
+class OpenSwitch(DockerOpenSwitch):
+    """
+    FIXME: document this
+    """
+
+
+__all__ = ['DockerOpenSwitch', 'OpenSwitch']
