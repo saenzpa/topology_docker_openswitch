@@ -92,7 +92,7 @@ def log_commands(
 
 
 @add_metaclass(ABCMeta)
-class DockerOpenSwitch(DockerNode, OpenSwitchBase):
+class DockerOpenSwitch(OpenSwitchBase, DockerNode):
     """
     Custom OpenSwitch node for the Topology Docker platform engine.
     This custom node loads an OpenSwitch image and has vtysh as default
