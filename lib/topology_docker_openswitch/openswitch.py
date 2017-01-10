@@ -101,9 +101,7 @@ class DockerOpenSwitch(OpenSwitchBase, DockerNode):
     """
 
     # FIXME: document shared_dir_mount
-    _openswitch_attributes = OpenSwitchBase._openswitch_attributes.update(
-        {'shared_dir_mount': ''}
-    )
+    _class_openswitch_attributes = {'shared_dir_mount': ''}
 
     @abstractmethod
     def __init__(
