@@ -332,5 +332,8 @@ class OpenSwitch(DockerOpenSwitch):
     FIXME: document this
     """
 
+    def __init__(self, *args, **kwargs):
+        super(OpenSwitch, self).__init__(*args, **kwargs)
+
 
 __all__ = ['DockerOpenSwitch', 'OpenSwitch']
