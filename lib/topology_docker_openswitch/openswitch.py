@@ -24,12 +24,17 @@ Custom Topology Docker Node for OpenSwitch.
 from __future__ import unicode_literals, absolute_import
 from __future__ import print_function, division
 
+from abc import ABCMeta, abstractmethod
 from json import loads
 from subprocess import check_output, CalledProcessError
 from platform import system, linux_distribution
 from logging import StreamHandler, getLogger, INFO, Formatter
 from sys import stdout
 from os.path import join, dirname, normpath, abspath
+
+from six import add_metaclass
+
+from topology_openswitch.openswitch import OpenSwitchBase
 
 from topology_docker.node import DockerNode
 from topology_docker.shell import DockerBashShell
@@ -86,7 +91,8 @@ def log_commands(
                 )
 
 
-class OpenSwitchNode(DockerNode):
+@add_metaclass(ABCMeta)
+class DockerOpenSwitch(OpenSwitchBase, DockerNode):
     """
     Custom OpenSwitch node for the Topology Docker platform engine.
     This custom node loads an OpenSwitch image and has vtysh as default
@@ -94,6 +100,10 @@ class OpenSwitchNode(DockerNode):
     See :class:`topology_docker.node.DockerNode`.
     """
 
+    # FIXME: document shared_dir_mount
+    _class_openswitch_attributes = {'shared_dir_mount': ''}
+
+    @abstractmethod
     def __init__(
             self, identifier,
             image='topology/ops:latest', binds=None,
@@ -108,7 +118,7 @@ class OpenSwitchNode(DockerNode):
         if binds is not None:
             container_binds.append(binds)
 
-        super(OpenSwitchNode, self).__init__(
+        super(DockerOpenSwitch, self).__init__(
             identifier, image=image, command='/sbin/init',
             binds=';'.join(container_binds), hostname='switch',
             network_mode='bridge', environment={'container': 'docker'},
@@ -116,7 +126,7 @@ class OpenSwitchNode(DockerNode):
         )
 
         # FIXME: Remove this attribute to merge with version > 1.6.0
-        self.shared_dir_mount = '/tmp'
+        self._shared_dir_mount = '/tmp'
 
         # Add vtysh (default) shell
         # This shell is started as a bash shell but it changes itself to a
@@ -159,7 +169,7 @@ class OpenSwitchNode(DockerNode):
 
         See :meth:`DockerNode.notify_post_build` for more information.
         """
-        super(OpenSwitchNode, self).notify_post_build()
+        super(DockerOpenSwitch, self).notify_post_build()
         self._setup_system()
 
     def _setup_system(self):
@@ -265,6 +275,17 @@ class OpenSwitchNode(DockerNode):
             LOG_PATHS.append(self.shared_dir)
 
             raise e
+
+        # Add virtual type
+
+        vtysh = self.get_shell('vtysh')
+
+        vtysh.send_command('show version', silent=True)
+        if 'genericx86-64' in vtysh.get_response(silent=True):
+            self.product_name = 'genericx84-64'
+        else:
+            self.product_name = 'genericx86-p4'
+
         # Read back port mapping
         port_mapping = '{}/port_mapping.json'.format(self.shared_dir)
         with open(port_mapping, 'r') as fd:
@@ -303,7 +324,16 @@ class OpenSwitchNode(DockerNode):
             if isinstance(shell, OpenSwitchVtyshShell):
                 shell._exit()
 
-        super(OpenSwitchNode, self).stop()
+        super(DockerOpenSwitch, self).stop()
 
 
-__all__ = ['OpenSwitchNode']
+class OpenSwitch(DockerOpenSwitch):
+    """
+    FIXME: document this
+    """
+
+    def __init__(self, *args, **kwargs):
+        super(OpenSwitch, self).__init__(*args, **kwargs)
+
+
+__all__ = ['DockerOpenSwitch', 'OpenSwitch']

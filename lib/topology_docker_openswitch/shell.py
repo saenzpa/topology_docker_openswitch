@@ -22,28 +22,17 @@ OpenSwitch shell module
 from __future__ import unicode_literals, absolute_import
 from __future__ import print_function, division
 
-from logging import warning
-from re import match, search
-
-from pexpect import EOF
-
-from topology.platforms.shell import PExpectBashShell
 from topology_docker.shell import DockerShell
 
-
-_VTYSH_PROMPT_TPL = r'(\r\n)?{}(\([-\w\s]+\))?# '
-_VTYSH_FORCED = 'X@~~==::VTYSH_PROMPT::==~~@X'
-# This is a regular expression that matches with values that may be found in
-# unset vtysh prompts:
-_VTYSH_STANDARD = '[-\w]+'
-
-VTYSH_FORCED_PROMPT = _VTYSH_PROMPT_TPL.format(_VTYSH_FORCED)
-VTYSH_STANDARD_PROMPT = _VTYSH_PROMPT_TPL.format(_VTYSH_STANDARD)
-
-BASH_FORCED_PROMPT = PExpectBashShell.FORCED_PROMPT
+from topology_openswitch.vtysh import (
+    BASH_FORCED_PROMPT,
+    VTYSH_FORCED_PROMPT,
+    VTYSH_STANDARD_PROMPT,
+    VtyshShellMixin
+)
 
 
-class OpenSwitchVtyshShell(DockerShell):
+class OpenSwitchVtyshShell(DockerShell, VtyshShellMixin):
     """
     OpenSwitch ``vtysh`` shell
 
@@ -125,50 +114,10 @@ class OpenSwitchVtyshShell(DockerShell):
         spawn.sendline('export PS1={}'.format(BASH_FORCED_PROMPT))
         spawn.expect(BASH_FORCED_PROMPT)
 
-        def determine_set_prompt():
-            """
-            This method determines if the vtysh command set prompt exists.
-
-            This method starts wit a call to sendline and finishes with a call
-            to expect.
-
-            :rtype: bool
-            :return: True if vtysh supports the ``set prompt`` command, False
-             otherwise.
-            """
-            # When a segmentation fault error happens, the message
-            # "Segmentation fault" shows up in the terminal and then and EOF
-            # follows, making the vtysh shell to close ending up in the bash
-            # shell that opened it.
-
-            # This starts the vtysh shell in a mode that forces the shell to
-            # always return the produced output, even if an EOF exception
-            # follows after it. This is done to handle the segmentation fault
-            # errors.
-            spawn.sendline('stdbuf -oL vtysh')
-            spawn.expect(VTYSH_STANDARD_PROMPT)
-
-            # The newer images of OpenSwitch include this command that changes
-            # the prompt of the shell to an unique value. This is done to
-            # perform a safe matching that will match only with this value in
-            # each expect.
-            spawn.sendline('set prompt {}'.format(_VTYSH_FORCED))
-
-            # Since it is not possible to know beforehand if the image loaded
-            # in the node includes the "set prompt" command, an attempt to
-            # match any of the following prompts is done. If the command does
-            # not exist, the shell will return an standard prompt after showing
-            # an error message.
-            index = spawn.expect(
-                [VTYSH_STANDARD_PROMPT, VTYSH_FORCED_PROMPT]
-            )
-
-            return bool(index)
-
         def join_prompt(prompt):
             return '{}|{}'.format(BASH_FORCED_PROMPT, prompt)
 
-        if determine_set_prompt():
+        if self._determine_set_prompt():
             # If this image supports "set prompt", then exit back to bash to
             # set the bash shell without echo.
             spawn.sendline('exit')
@@ -182,11 +131,11 @@ class OpenSwitchVtyshShell(DockerShell):
             # Go into the vtysh shell again. Exiting vtysh after calling "set
             # prompt" successfully disables the vtysh shell prompt to its
             # standard value, so it is necessary to call it again.
-            determine_set_prompt()
+            self._determine_set_prompt()
 
             # From now on the shell _prompt attribute is set to the defined
             # vtysh forced prompt.
-            self._prompt = join_prompt(VTYSH_FORCED_PROMPT)
+            self._prompt = '|'.join([BASH_FORCED_PROMPT, VTYSH_FORCED_PROMPT])
 
         else:
             # If the image does not support "set prompt", then enable the
@@ -196,7 +145,9 @@ class OpenSwitchVtyshShell(DockerShell):
 
             # From now on the shell _prompt attribute is set to the defined
             # vtysh standard prompt.
-            self._prompt = join_prompt(VTYSH_STANDARD_PROMPT)
+            self._prompt = '|'.join(
+                [BASH_FORCED_PROMPT, VTYSH_STANDARD_PROMPT]
+            )
 
         # This sendline is used here just because a _setup_shell must end in an
         # send/sendline call since it is followed by a call to expect in the
@@ -214,50 +165,10 @@ class OpenSwitchVtyshShell(DockerShell):
             connection=connection, silent=silent
         )
 
-        spawn = self._get_connection(connection)
-
-        # To find out if a segmentation fault error was produced, a search for
-        # the "Segmentation fault" string in the output of the command is done.
-        segmentation_fault = search(
-            r'Segmentation fault', self.get_response(silent=True)
-        )
-
-        # The other necessary condition to detect a segmentation fault error is
-        # to detect a forced bash prompt being matched.
-        forced_bash_prompt = match(
-            BASH_FORCED_PROMPT, spawn.after.decode(
-                encoding=self._encoding, errors=self._errors
-            )
-        )
-
-        # This exception is raised to provide a meaningful error to the user.
-        if segmentation_fault is not None and forced_bash_prompt is not None:
-            raise Exception(
-                'Segmentation fault received when executing "{}".'.format(
-                    self._last_command
-                )
-            )
+        # This will raise a proper exception if a crash has been found.
+        self._handle_crash(connection)
 
         return match_index
-
-    def _exit(self):
-        """
-        Attempt a clean exit from the shell.
-
-        This is necessary to enable gathering of coverage information.
-        """
-        try:
-            self.send_command('end', silent=True)
-            self.send_command(
-                'exit', matches=[EOF, BASH_FORCED_PROMPT],
-                silent=True
-            )
-        except Exception as error:
-            warning(
-                'Exiting the shell failed with this error: {}'.format(
-                    str(error)
-                )
-            )
 
 
 __all__ = ['OpenSwitchVtyshShell']

@@ -96,7 +96,7 @@ setup(
         'pytest11': ['topology_docker_openswitch '
                      '= topology_docker_openswitch.plugin.plugin'],
         'topology_docker_node_10': [
-            'openswitch = topology_docker_openswitch.openswitch:OpenSwitchNode'
+            'openswitch = topology_docker_openswitch.openswitch:OpenSwitch'
         ]
     }
 )
