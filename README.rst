@@ -4,6 +4,13 @@ openswitch node for topology_docker
 
 A Topology OpenSwitch Node for topology_docker.
 
+1.1.0
+-----
+
+**New**
+
+- Adapting for ``topology_openswitch``.
+
 1.0.2
 -----
 
