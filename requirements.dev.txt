@@ -10,4 +10,4 @@ topology_lib_ping
 topology_lib_ip
 
 -e git+https://github.com/saenzpa/topology_docker.git@master#egg=topology_docker
--e git+file:///home/ocelotl/HPENetworking/topology_openswitch@master#egg=topology_openswitch
+-e git+https://github.com/HPENetworking/topology_openswitch.git@master#egg=topology_openswitch
