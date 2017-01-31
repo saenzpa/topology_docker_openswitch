@@ -162,29 +162,36 @@ class DockerOpenSwitch(OpenSwitchBase, DockerNode):
             )
         )
 
-    def notify_post_build(self):
+    def notify_post_build(self, script_path=None):
         """
         Get notified that the post build stage of the topology build was
         reached.
 
+        :param script_path:
+          string with the path of the setup script to be used
+
         See :meth:`DockerNode.notify_post_build` for more information.
         """
         super(DockerOpenSwitch, self).notify_post_build()
-        self._setup_system()
+        self._setup_system(script_path)
 
-    def _setup_system(self):
+    def _setup_system(self, script_path=None):
         """
         Setup the OpenSwitch image for testing.
 
         #. Wait for daemons to converge.
         #. Assign an interface to each port label.
         #. Create remaining interfaces.
+        :param script_path:
+          string with the path of the setup script to be used
         """
 
         # Write and execute setup script
-        with open(
-            join(dirname(normpath(abspath(__file__))), 'openswitch_setup')
-        ) as openswitch_setup_file:
+        openswitch_setup_path = script_path or join(
+            dirname(normpath(abspath(__file__))), 'openswitch_setup'
+            )
+
+        with open(openswitch_setup_path) as openswitch_setup_file:
             openswitch_setup = openswitch_setup_file.read()
 
         setup_script = '{}/openswitch_setup.py'.format(self.shared_dir)
