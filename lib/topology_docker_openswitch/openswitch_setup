@@ -196,9 +196,7 @@ def create_interfaces():
 
         except Exception as error:
             raise Exception(
-                'Failed to map ports with port labels: {}'.format(
-                    error.message
-                )
+                'Failed to map ports with port labels: {}'.format(str(error))
             )
 
     # Writting mapping to file
@@ -344,11 +342,11 @@ def main():
 
     SWNS_CHECK()
     HWDESC_CHECK()
-    SWITCHD_CHECK()
     create_interfaces()
     DB_SOCK_CHECK()
     CUR_HW_CHECK()
     CUR_CFG_CHECK()
+    SWITCHD_CHECK()
     OPS_SWITCHD_CHECK()
     HOSTNAME_CHECK()
 
