@@ -138,63 +138,52 @@ def create_interfaces():
             .format(**locals())
         )
 
-        try:
-            check_call(shsplit(rename_int.format(**locals())))
+        check_call(shsplit(rename_int.format(**locals())))
 
-            if 'emulns' not in netns:
-                check_call(
-                    shsplit(netns_fp_cmd_tpl_swns.format(hwport=hwport))
-                )
-            else:
-                check_call(
-                    shsplit(netns_fp_cmd_tpl_emulns.format(hwport=hwport))
-                )
-                check_call(
-                    '{ns_exec} ip link set dev {hwport} up'.format(**locals()),
-                    shell=True
-                )
-                # Doing this to avoid namespace issues in lambda
-                command = '{ns_exec} ip link show {hwport}'.format(**locals())
-                wait_check(
-                    lambda: 'UP' in check_output(command, shell=True),
-                    '{} to show up'.format(hwport),
-                    '{} did not show up'.format(hwport)
-                )
+        if 'emulns' not in netns:
+            check_call(
+                shsplit(netns_fp_cmd_tpl_swns.format(hwport=hwport))
+            )
+        else:
+            check_call(
+                shsplit(netns_fp_cmd_tpl_emulns.format(hwport=hwport))
+            )
+            check_call(
+                '{ns_exec} ip link set dev {hwport} up'.format(**locals()),
+                shell=True
+            )
+            # Doing this to avoid namespace issues in lambda
+            command = '{ns_exec} ip link show {hwport}'.format(**locals())
+            wait_check(
+                lambda: 'UP' in check_output(command, shell=True),
+                '{} to show up'.format(hwport),
+                '{} did not show up'.format(hwport)
+            )
 
-                out = check_output(
-                    '{ns_exec} echo port_add {hwport} '
-                    ' {port} | {ns_exec} '
-                    '/usr/bin/bm_tools/runtime_CLI.py --json '
-                    '/usr/share/ovs_p4_plugin/switch_bmv2.json '
-                    '--thrift-port 10001'.format(
-                        ns_exec=ns_exec, hwport=hwport,
-                        port=str(int(hwport) - 1)
-                    ),
-                    shell=True
+            out = check_output(
+                '{ns_exec} echo port_add {hwport} '
+                ' {port} | {ns_exec} '
+                '/usr/bin/bm_tools/runtime_CLI.py --json '
+                '/usr/share/ovs_p4_plugin/switch_bmv2.json '
+                '--thrift-port 10001'.format(
+                    ns_exec=ns_exec, hwport=hwport,
+                    port=str(int(hwport) - 1)
+                ),
+                shell=True
+            )
+
+            info('BM port creation: {}'.format(out))
+
+            regex = (
+                r'\s*Control utility for runtime P4 table'
+                r' manipulation\s*\nRuntimeCmd:\s*\nRuntimeCmd:\s*$'
+            )
+
+            if findall(regex, out, MULTILINE) is None:
+                raise Exception(
+                    'Control utility for runtime'
+                    ' P4 table failed: {}'.format(out)
                 )
-
-                info('BM port creation: {}'.format(out))
-
-                regex = (
-                    r'\s*Control utility for runtime P4 table'
-                    r' manipulation\s*\nRuntimeCmd:\s*\nRuntimeCmd:\s*$'
-                )
-
-                if findall(regex, out, MULTILINE) is None:
-                    raise Exception(
-                        'Control utility for runtime'
-                        ' P4 table failed: {}'.format(out)
-                    )
-
-        except CalledProcessError as error:
-            raise Exception(
-                'Failed to map ports with port labels, {} failed.'.format(
-                    error.cmd
-                )
-            ) from error
-
-        except Exception as error:
-            raise Exception('Failed to map ports with port labels') from error
 
     # Writting mapping to file
     shared_dir_tmp = split(__file__)[0]
