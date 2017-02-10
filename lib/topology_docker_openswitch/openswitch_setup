@@ -153,12 +153,10 @@ def create_interfaces():
                     '{ns_exec} ip link set dev {hwport} up'.format(**locals()),
                     shell=True
                 )
-
+                # Doing this to avoid namespace issues in lambda
+                command = '{ns_exec} ip link show {hwport}'.format(**locals())
                 wait_check(
-                    lambda: 'UP' in check_output(
-                        '{ns_exec} ip link show {hwport}'.format(**locals()),
-                        shell=True
-                    ),
+                    lambda: 'UP' in check_output(command, shell=True),
                     '{} to show up'.format(hwport),
                     '{} did not show up'.format(hwport)
                 )
@@ -190,14 +188,13 @@ def create_interfaces():
 
         except CalledProcessError as error:
             raise Exception(
-                'Failed to map ports with port labels, {} failed with this '
-                'error: {}'.format(error.cmd, error.output)
-            )
+                'Failed to map ports with port labels, {} failed.'.format(
+                    error.cmd
+                )
+            ) from error
 
         except Exception as error:
-            raise Exception(
-                'Failed to map ports with port labels: {}'.format(str(error))
-            )
+            raise Exception('Failed to map ports with port labels') from error
 
     # Writting mapping to file
     shared_dir_tmp = split(__file__)[0]
