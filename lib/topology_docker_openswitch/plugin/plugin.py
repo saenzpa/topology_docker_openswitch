@@ -34,26 +34,13 @@ def pytest_runtest_teardown(item):
     FIXME: document the item argument
     """
     test_suite = splitext(basename(item.parent.name))[0]
+    path_name = '/tmp/topology/docker/{}_{}_{}'.format(
+        test_suite, item.name, datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
+    )
 
-    from pytest import config
-
-    topology_log_dir = config.getoption('--topology-log-dir')
-
-    if not topology_log_dir:
-        return
-    else:
-        path_name = join(
-            topology_log_dir,
-            '{}_{}_{}'.format(
-                test_suite,
-                item.name,
-                datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
-            )
-        )
-
-        # Being extra-prudent here
-        if exists(path_name):
-            rmtree(path_name)
+    # Being extra-prudent here
+    if exists(path_name):
+        rmtree(path_name)
 
     if 'topology' not in item.funcargs:
         from topology_docker_openswitch.openswitch import LOG_PATHS
@@ -112,14 +99,14 @@ def pytest_runtest_teardown(item):
             core_path = '/var/diagnostics/coredump'
 
             bash_shell.send_command(
-                'ls -1 {}/core* 2>/dev/null'.format(core_path), silent=True
+                'ls -1 {}/core.* 2>/dev/null'.format(core_path), silent=True
             )
 
             core_files = bash_shell.get_response(silent=True).splitlines()
 
             for core_file in core_files:
                 bash_shell.send_command(
-                    'cp {core_file} /tmp'.format(**locals()),
+                    'cp {core_path}/{core_file} /tmp'.format(**locals()),
                     silent=True
                 )
         except:
