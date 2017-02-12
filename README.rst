@@ -4,6 +4,14 @@ openswitch node for topology_docker
 
 A Topology OpenSwitch Node for topology_docker.
 
+1.1.1
+-----
+
+**Fix**
+
+- Removing startup of restd.
+- Fixing coredump file getter.
+
 1.1.0
 -----
 
