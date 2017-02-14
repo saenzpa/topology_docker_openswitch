@@ -4,6 +4,13 @@ openswitch node for topology_docker
 
 A Topology OpenSwitch Node for topology_docker.
 
+1.1.2
+-----
+
+**Fix**
+
+- Fixing typo in ``product_name``.
+
 1.1.1
 -----
 
