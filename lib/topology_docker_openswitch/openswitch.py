@@ -289,7 +289,7 @@ class DockerOpenSwitch(OpenSwitchBase, DockerNode):
 
         vtysh.send_command('show version', silent=True)
         if 'genericx86-64' in vtysh.get_response(silent=True):
-            self.product_name = 'genericx84-64'
+            self.product_name = 'genericx86-64'
         else:
             self.product_name = 'genericx86-p4'
 
