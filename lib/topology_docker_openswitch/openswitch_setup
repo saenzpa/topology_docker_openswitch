@@ -116,7 +116,7 @@ def create_interfaces():
                     '/usr/share/ovs_p4_plugin/switch_bmv2.json '
                     '--thrift-port 10001'.format(
                         ns_exec=ns_exec, hwport=hwport,
-                        port=str(int(hwport) - 1)
+                        port=str(int(len(mapping_ports.keys())) - 1)
                     ),
                     shell=True
                 )
