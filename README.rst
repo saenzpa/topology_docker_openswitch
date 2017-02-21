@@ -4,6 +4,13 @@ openswitch node for topology_docker
 
 A Topology OpenSwitch Node for topology_docker.
 
+1.1.3
+-----
+
+**Fix**
+
+- Making P4 boot accept string labels.
+
 1.1.2
 -----
 
