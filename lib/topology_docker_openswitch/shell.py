@@ -160,13 +160,15 @@ class OpenSwitchVtyshShell(DockerShell, VtyshShellMixin):
     ):
         # This parent method performs the connection to the shell and the set
         # up of a bash prompt to an unique value.
-        match_index = super(OpenSwitchVtyshShell, self).send_command(
-            command, matches=matches, newline=newline, timeout=timeout,
-            connection=connection, silent=silent
-        )
-
-        # This will raise a proper exception if a crash has been found.
-        self._handle_crash(connection)
+        try:
+            match_index = super(OpenSwitchVtyshShell, self).send_command(
+                command, matches=matches, newline=newline, timeout=timeout,
+                connection=connection, silent=silent
+            )
+        except Exception as error:
+            # This will raise a proper exception if a crash has been found.
+            self._handle_crash(connection)
+            raise error
 
         return match_index
 
