@@ -22,6 +22,7 @@ Test suite for module topology_docker_openswitch.
 from unittest.mock import patch
 
 from pytest import raises
+from ipdb import set_trace
 
 from topology_docker_openswitch.shell import OpenSwitchVtyshShell
 from topology_openswitch.vtysh import UnknownError, SegmentationFaultError
@@ -36,6 +37,7 @@ def test_unknown_error(mock_get_connect_command):
     shell = OpenSwitchVtyshShell('123456')
 
     with raises(UnknownError):
+        set_trace()
         shell.send_command('some_command')
 
 

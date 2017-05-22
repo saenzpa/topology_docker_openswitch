@@ -6,7 +6,8 @@ sphinx
 sphinx_rtd_theme
 sphinxcontrib-plantuml
 autoapi
+ipdb
 
 -e git+https://github.com/saenzpa/topology_docker.git@master#egg=topology_docker
--e git+https://github.com/HPENetworking/topology_openswitch.git@master#egg=topology_openswitch
+-e git+https://github.com/HPENetworking/topology_openswitch.git@vtysh_raise#egg=topology_openswitch
 -e git+git@github.hpe.com:hpe-networking/test_shell.git@master#egg=test_shell
