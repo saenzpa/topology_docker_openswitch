@@ -1,4 +1,5 @@
 include README.rst LICENSE
 include requirements.txt
+include lib/topology_docker_openswitch/openswitch_setup
 exclude test/*
 global-exclude __pycache__ *.py[co]

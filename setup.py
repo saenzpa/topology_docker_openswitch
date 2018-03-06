@@ -62,6 +62,7 @@ setup(
     version=find_version('lib/topology_docker_openswitch/__init__.py'),
     package_dir={'': 'lib'},
     packages=find_packages('lib'),
+    include_package_data=True,
 
     # Dependencies
     install_requires=find_requirements('requirements.txt'),
