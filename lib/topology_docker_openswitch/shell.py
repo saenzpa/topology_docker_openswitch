@@ -28,7 +28,8 @@ from topology_openswitch.vtysh import (
     BASH_FORCED_PROMPT,
     VTYSH_FORCED_PROMPT,
     VTYSH_STANDARD_PROMPT,
-    VtyshShellMixin
+    VtyshShellMixin,
+    ValgrindShellMixin,
 )
 
 
@@ -171,4 +172,84 @@ class OpenSwitchVtyshShell(DockerShell, VtyshShellMixin):
         return match_index
 
 
-__all__ = ['OpenSwitchVtyshShell']
+class OpenSwitchValgrindShell(ValgrindShellMixin, OpenSwitchVtyshShell):
+    def _setup_shell(self, connection=None):
+        """
+        Get the shell ready to handle ``valgrind`` particularities.
+
+        These particularities are the handling of segmentation fault errors
+        and forced or standard ``valgrind`` prompts.
+
+        See :meth:`PExpectShell._setup_shell` for more information.
+        """
+
+        spawn = self._get_connection(connection)
+        # Since user, password or initial_command are not being used, this is
+        # the first expect done in the connection. The value of self._prompt at
+        # this moment is the initial prompt of an OpenSwitch bash shell prompt.
+        spawn.expect(self._prompt)
+
+        # The bash prompt is set to a forced value for valgrind shells that
+        # support prompt setting and for the ones that do not.
+        spawn.sendline('export PS1={}'.format(BASH_FORCED_PROMPT))
+        spawn.expect(BASH_FORCED_PROMPT)
+
+        def join_prompt(prompt):
+            return '{}|{}'.format(BASH_FORCED_PROMPT, prompt)
+
+        if self._determine_set_prompt():
+            # If this image supports "set prompt", then exit back to bash to
+            # set the bash shell without echo.
+            spawn.sendline('exit')
+            spawn.expect(BASH_FORCED_PROMPT)
+
+            # This disables the echo in the bash and in the subsequent valgrind
+            # shell too.
+            spawn.sendline('stty -echo')
+            spawn.expect(BASH_FORCED_PROMPT)
+
+            # Go into the valgrind shell again. Exiting valgrind after calling "set
+            # prompt" successfully disables the valgrind shell prompt to its
+            # standard value, so it is necessary to call it again.
+            self._determine_set_prompt()
+
+            # From now on the shell _prompt attribute is set to the defined
+            # valgrind forced prompt.
+            self._prompt = '|'.join([BASH_FORCED_PROMPT, VTYSH_FORCED_PROMPT])
+
+        else:
+            # If the image does not support "set prompt", then enable the
+            # filtering of echo by setting the corresponding attribute to True.
+            # WARNING: Using a private attribute here.
+            self._try_filter_echo = True
+
+            # From now on the shell _prompt attribute is set to the defined
+            # valgrind standard prompt.
+            self._prompt = '|'.join(
+                [BASH_FORCED_PROMPT, VTYSH_STANDARD_PROMPT]
+            )
+
+        # This sendline is used here just because a _setup_shell must end in an
+        # send/sendline call since it is followed by a call to expect in the
+        # connect method.
+        spawn.sendline('')
+
+    def send_command(
+        self, command, matches=None, newline=True, timeout=None,
+        connection=None, silent=False
+    ):
+        # This parent method performs the connection to the shell and the set
+        # up of a bash prompt to an unique value.
+        match_index = super(OpenSwitchValgrindShell, self).send_command(
+            command, matches=matches, newline=newline, timeout=timeout,
+            connection=connection, silent=silent
+        )
+
+        # This will raise a proper exception if a crash has been found.
+        self._handle_crash(connection)
+
+        return match_index
+
+
+__all__ = ['OpenSwitchVtyshShell',
+           'OpenSwitchValgrindShell']
