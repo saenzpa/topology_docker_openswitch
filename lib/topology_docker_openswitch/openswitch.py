@@ -39,7 +39,7 @@ from topology_openswitch.openswitch import OpenSwitchBase
 from topology_docker.node import DockerNode
 from topology_docker.shell import DockerBashShell
 
-from .shell import OpenSwitchVtyshShell
+from .shell import (OpenSwitchVtyshShell, OpenSwitchValgrindShell)
 
 # When a failure happens during boot time, logs and other information is
 # collected to help with the debugging. The path of this collection is to be
@@ -134,6 +134,7 @@ class DockerOpenSwitch(OpenSwitchBase, DockerNode):
         # matching with some command output and by setting an unique prompt
         # with the set prompt vtysh command
         self._register_shell('vtysh', OpenSwitchVtyshShell(self.container_id))
+        self._register_shell('valgrind', OpenSwitchValgrindShell(self.container_id))
 
         # Add bash shells
 
